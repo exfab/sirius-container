@@ -137,6 +137,7 @@ jobs:
           GPG_FINGERPRINT: ${{ steps.gpg_import.outputs.fingerprint }}
         run: |
           echo "${GPG_PASSPHRASE}" | gpg --batch --yes --passphrase-fd 0 \
+            --pinentry-mode loopback \
             --local-user "${GPG_FINGERPRINT}" \
             --detach-sign --armor \
             sirius-${SIRIUS_VERSION}-${SIRIUS_ARCH}.sif
