@@ -88,17 +88,68 @@ jobs:
             sirius-${SIRIUS_VERSION}-${SIRIUS_ARCH}.sif \
             sirius.def
 
-      - name: Upload image as artifact
+      # ── Integrity & signing ──────────────────────────────────────────────
+
+      - name: Compute SHA256 checksum
+        run: |
+          sha256sum sirius-${SIRIUS_VERSION}-${SIRIUS_ARCH}.sif \
+            > sirius-${SIRIUS_VERSION}-${SIRIUS_ARCH}.sif.sha256
+          cat sirius-${SIRIUS_VERSION}-${SIRIUS_ARCH}.sif.sha256
+
+      # Requires repository secrets: GPG_PRIVATE_KEY (armored) and GPG_PASSPHRASE.
+      # When the secrets are absent the step is skipped gracefully.
+      - name: Import GPG key
+        id: gpg_import
+        if: ${{ env.GPG_PRIVATE_KEY != '' }}
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        run: |
+          echo "${GPG_PRIVATE_KEY}" | gpg --batch --import
+          # Retrieve the fingerprint of the just-imported key
+          FINGERPRINT=$(gpg --with-colons --import-status /dev/null 2>&1 || \
+            gpg --list-secret-keys --with-colons | awk -F: '/^fpr/{print $10; exit}')
+          echo "fingerprint=${FINGERPRINT}" >> "$GITHUB_OUTPUT"
+
+      - name: Create detached GPG signature (.asc)
+        if: steps.gpg_import.conclusion == 'success'
+        env:
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        run: |
+          echo "${GPG_PASSPHRASE}" | gpg --batch --yes --passphrase-fd 0 \
+            --detach-sign --armor \
+            sirius-${SIRIUS_VERSION}-${SIRIUS_ARCH}.sif
+
+      - name: Embed signature via apptainer sign
+        if: steps.gpg_import.conclusion == 'success'
+        env:
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        run: |
+          # Import the key into Apptainer's local keyring so it can sign
+          gpg --export --armor | sudo apptainer key import /dev/stdin
+          echo "${GPG_PASSPHRASE}" | sudo apptainer sign \
+            --keyidx 0 \
+            sirius-${SIRIUS_VERSION}-${SIRIUS_ARCH}.sif
+
+      # ── Upload artifacts ─────────────────────────────────────────────────
+
+      - name: Upload image and checksums as artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: sirius-${{ env.SIRIUS_VERSION }}-${{ env.SIRIUS_ARCH }}.sif
-          path: sirius-${{ env.SIRIUS_VERSION }}-${{ env.SIRIUS_ARCH }}.sif
+          name: sirius-${{ env.SIRIUS_VERSION }}-${{ env.SIRIUS_ARCH }}
+          path: |
+            sirius-${{ env.SIRIUS_VERSION }}-${{ env.SIRIUS_ARCH }}.sif
+            sirius-${{ env.SIRIUS_VERSION }}-${{ env.SIRIUS_ARCH }}.sif.sha256
+            sirius-${{ env.SIRIUS_VERSION }}-${{ env.SIRIUS_ARCH }}.sif.asc
           retention-days: 30
 
-      # Attach the .sif to the GitHub Release when a tag is pushed
-      - name: Upload image to release
+      # Attach all available assets to the GitHub Release when a tag is pushed
+      - name: Upload assets to release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: sirius-${{ env.SIRIUS_VERSION }}-${{ env.SIRIUS_ARCH }}.sif
+          files: |
+            sirius-${{ env.SIRIUS_VERSION }}-${{ env.SIRIUS_ARCH }}.sif
+            sirius-${{ env.SIRIUS_VERSION }}-${{ env.SIRIUS_ARCH }}.sif.sha256
+            sirius-${{ env.SIRIUS_VERSION }}-${{ env.SIRIUS_ARCH }}.sif.asc
 
