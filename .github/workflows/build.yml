@@ -1,0 +1,78 @@
+name: Build Apptainer image
+
+on:
+  push:
+    branches: ["main"]
+    tags: ["v*"]
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+    inputs:
+      sirius_version:
+        description: "SIRIUS version to build (e.g. 6.3.12)"
+        required: false
+        default: "6.3.12"
+      sirius_arch:
+        description: "SIRIUS architecture suffix (e.g. linux-x64)"
+        required: false
+        default: "linux-x64"
+
+# Derive the SIRIUS version from the Git tag when available (strip leading 'v').
+# For manual runs the workflow_dispatch inputs are used.
+# For branch pushes / PRs the defaults below apply.
+env:
+  SIRIUS_VERSION: ${{ github.event.inputs.sirius_version || '6.3.12' }}
+  SIRIUS_ARCH: ${{ github.event.inputs.sirius_arch || 'linux-x64' }}
+
+jobs:
+  build:
+    name: Build sirius.sif
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Override version from tag name when the workflow is triggered by a tag push
+      - name: Set version from tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: echo "SIRIUS_VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+
+      - name: Install Apptainer
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q \
+            build-essential \
+            libseccomp-dev \
+            libglib2.0-dev \
+            pkg-config \
+            squashfs-tools \
+            cryptsetup \
+            runc \
+            wget
+          # Install apptainer from the official deb repository
+          wget -qO /tmp/apptainer.deb \
+            "https://github.com/apptainer/apptainer/releases/download/v1.3.4/apptainer_1.3.4_amd64.deb"
+          sudo dpkg -i /tmp/apptainer.deb
+
+      - name: Build Apptainer image
+        run: |
+          sudo apptainer build \
+            --build-arg SIRIUS_VERSION="${SIRIUS_VERSION}" \
+            --build-arg SIRIUS_ARCH="${SIRIUS_ARCH}" \
+            sirius-${SIRIUS_VERSION}-${SIRIUS_ARCH}.sif \
+            sirius.def
+
+      - name: Upload image as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sirius-${{ env.SIRIUS_VERSION }}-${{ env.SIRIUS_ARCH }}.sif
+          path: sirius-${{ env.SIRIUS_VERSION }}-${{ env.SIRIUS_ARCH }}.sif
+          retention-days: 30
+
+      # Attach the .sif to the GitHub Release when a tag is pushed
+      - name: Upload image to release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: sirius-${{ env.SIRIUS_VERSION }}-${{ env.SIRIUS_ARCH }}.sif
