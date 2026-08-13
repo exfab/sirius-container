@@ -1,0 +1,31 @@
+Bootstrap: docker
+From: ubuntu:22.04
+
+%files
+    /scratch/jstajich/27438229/sirius-container/extracted/sirius /opt/sirius
+
+%post
+    apt-get update
+    apt-get upgrade -y
+    apt-get install -y liblapack3 libblas3
+    chmod +x /opt/sirius/bin/sirius
+    apt-get clean
+    rm -rf /var/lib/apt/lists/*
+
+%environment
+    export PATH=/opt/sirius/bin:$PATH
+
+%runscript
+    exec sirius "$@"
+
+%labels
+    Version 6.3.12
+    Source https://github.com/sirius-ms/sirius/releases/download/v6.3.12/sirius-6.3.12-linux-x64.zip
+    Note Unmodified upstream release, packaged for glibc-2.28 hosts (e.g. CentOS/RHEL 8) via ubuntu:22.04 base (glibc 2.35)
+
+%help
+    SIRIUS 6.3.12 CLI, packaged in an Apptainer image so it runs on hosts
+    with glibc < 2.29 (the bundled CBC solver's native libgfortran/liblapack
+    require GLIBC_2.29, which CentOS/RHEL 8's glibc 2.28 doesn't provide).
+    Usage: apptainer run sirius.sif <sirius args>
+       or: apptainer exec sirius.sif sirius <sirius args>
