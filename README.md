@@ -30,6 +30,7 @@ apptainer pull sirius.sif oras://ghcr.io/exfab/sirius-container/sirius:latest
 
 > **Note:** These are raw `.sif` artifacts stored via the ORAS protocol.
 > They are **not** Docker images and cannot be used with `docker pull`.
+> If this repository is forked, substitute `exfab/sirius-container` with the fork's `owner/repo`.
 
 ## Automated builds
 

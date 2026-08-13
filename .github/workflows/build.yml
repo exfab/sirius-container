@@ -132,16 +132,19 @@ jobs:
       - name: Embed signature via apptainer sign
         if: steps.gpg_import.conclusion == 'success'
         env:
-          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+          # Apptainer reads the key passphrase from this environment variable
+          # when running non-interactively.
+          APPTAINER_KEYPASSWD: ${{ secrets.GPG_PASSPHRASE }}
           GPG_FINGERPRINT: ${{ steps.gpg_import.outputs.fingerprint }}
         run: |
           # Import the key into Apptainer's local keyring so it can sign
           gpg --export --armor "${GPG_FINGERPRINT}" | sudo apptainer key import /dev/stdin
-          # Resolve key index for the imported fingerprint
-          KEY_IDX=$(sudo apptainer key list 2>/dev/null | awk -v fp="${GPG_FINGERPRINT}" \
-            '$0 ~ fp {match($0,/^[[:space:]]*([0-9]+)/,a); print a[1]; exit}')
+          # Resolve the numeric index for the imported fingerprint.
+          # `apptainer key list` output format: "idx) FINGERPRINT  ..."
+          KEY_IDX=$(sudo apptainer key list 2>/dev/null \
+            | awk -F')' -v fp="${GPG_FINGERPRINT}" '$2 ~ fp {print $1; exit}')
           KEY_IDX="${KEY_IDX:-0}"
-          echo "${GPG_PASSPHRASE}" | sudo apptainer sign \
+          sudo -E apptainer sign \
             --keyidx "${KEY_IDX}" \
             sirius-${SIRIUS_VERSION}-${SIRIUS_ARCH}.sif
 
@@ -161,7 +164,9 @@ jobs:
       - name: Push .sif to ghcr.io via ORAS
         if: github.event_name != 'pull_request'
         run: |
-          IMAGE="ghcr.io/${{ github.repository_owner }}/sirius-container/sirius"
+          # Derive registry path from the repository name to support forks/renames.
+          # github.repository = "owner/repo", e.g. "exfab/sirius-container"
+          IMAGE="ghcr.io/${{ github.repository }}/sirius"
           sudo apptainer push \
             sirius-${SIRIUS_VERSION}-${SIRIUS_ARCH}.sif \
             "oras://${IMAGE}:${SIRIUS_VERSION}-${SIRIUS_ARCH}"
