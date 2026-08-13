@@ -15,6 +15,22 @@ apptainer build \
   sirius.sif sirius.def
 ```
 
+## Pulling from ghcr.io (recommended)
+
+The CI workflow pushes each build to the GitHub Container Registry as an OCI artifact.
+Pull it directly with Apptainer (no manual download needed):
+
+```bash
+# Specific version + arch
+apptainer pull sirius.sif oras://ghcr.io/exfab/sirius-container/sirius:6.3.12-linux-x64
+
+# Latest release (tag builds only)
+apptainer pull sirius.sif oras://ghcr.io/exfab/sirius-container/sirius:latest
+```
+
+> **Note:** These are raw `.sif` artifacts stored via the ORAS protocol.
+> They are **not** Docker images and cannot be used with `docker pull`.
+
 ## Automated builds
 
 GitHub Actions builds the `.sif` image on every push to `main`, pull request, and version tag.
@@ -26,7 +42,9 @@ git tag v6.3.12-linux-x64
 git push --tags
 ```
 
-The workflow uploads the image and integrity files as a GitHub Release asset.
+The workflow:
+- Pushes the image to `ghcr.io/exfab/sirius-container/sirius` (tagged `:version-arch`, `:version`, `:latest`)
+- Uploads the image and integrity files as GitHub Release assets
 
 ## Verifying a downloaded image
 
