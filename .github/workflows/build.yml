@@ -152,13 +152,9 @@ jobs:
         run: |
           # Import the key into Apptainer's local keyring so it can sign
           gpg --export --armor "${GPG_FINGERPRINT}" | sudo apptainer key import /dev/stdin
-          # Resolve the numeric index for the imported fingerprint.
-          # `apptainer key list` output format: "idx) FINGERPRINT  ..."
-          KEY_IDX=$(sudo apptainer key list 2>/dev/null \
-            | awk -F')' -v fp="${GPG_FINGERPRINT}" '$2 ~ fp {print $1; exit}')
-          KEY_IDX="${KEY_IDX:-0}"
+          # Sign using the fingerprint directly to avoid fragile index lookup.
           sudo -E apptainer sign \
-            --keyidx "${KEY_IDX}" \
+            --fingerprint "${GPG_FINGERPRINT}" \
             sirius-${SIRIUS_VERSION}-${SIRIUS_ARCH}.sif
 
       # ── Publish to ghcr.io via ORAS ──────────────────────────────────────
