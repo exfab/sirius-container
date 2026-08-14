@@ -12,22 +12,25 @@ jobs:
   cleanup:
     runs-on: ubuntu-latest
     steps:
+      - name: Compute cut-off date
+        id: cutoff
+        run: echo "date=$(date -u -d '14 days ago' '+%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_OUTPUT"
+
       - name: Delete untagged images older than 2 weeks
         uses: snok/container-retention-policy@v3.1.0
         with:
           account: stajichlab
-          account-type: org
           image-names: aaftf
-          untagged-only: true
-          cut-off: 2 weeks ago UTC
+          tag-selection: untagged
+          cut-off: ${{ steps.cutoff.outputs.date }}
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Keep only latest beta/alpha release tag
         uses: snok/container-retention-policy@v3.1.0
         with:
           account: stajichlab
-          account-type: org
           image-names: aaftf
-          tag-regex: "^.*(?:alpha|beta|b\\d).*$"
+          image-tags: "*alpha* *beta* *b[0-9]*"
+          tag-selection: tagged
           keep-n-most-recent: 1
           token: ${{ secrets.GITHUB_TOKEN }}
