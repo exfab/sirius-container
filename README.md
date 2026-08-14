@@ -1,82 +1,73 @@
-Build sirius-ms container for https://github.com/sirius-ms/sirius
+# sirius-container
 
-## Building
+Container image for the [SIRIUS](https://github.com/sirius-ms/sirius) metabolomics
+annotation CLI, published to GitHub Container Registry (ghcr.io) as a Docker image.
+All images are signed with Cosign (Sigstore) and carry SLSA provenance attestations.
 
-Default build (uses version from `VERSION` file):
+The `ubuntu:22.04` base (glibc 2.35) is chosen so the bundled CBC solver's native
+libgfortran/liblapack (which require GLIBC_2.29) runs on hosts with glibc < 2.29,
+e.g. CentOS/RHEL 8.
+
+## Versioning
+
+- The `VERSION` file is the default version for `main` builds (currently `6.3.12`).
+- Release tags follow `v<version>` or `v<version>-<arch>`, e.g. `v6.3.12` or
+  `v6.3.12-linux-x64`. Tags drive the `:latest` / `:<version>` image tags.
+
+## Building locally
+
 ```bash
-apptainer build sirius.sif sirius.def
-```
+# Default version (from VERSION file)
+docker build -t sirius:latest .
 
-Custom version / architecture:
-```bash
-apptainer build \
-  --build-arg SIRIUS_VERSION=6.3.12 \
-  --build-arg SIRIUS_ARCH=linux-x64 \
-  sirius.sif sirius.def
+# Custom version / architecture
+docker build --build-arg SIRIUS_VERSION=6.3.12 \
+             --build-arg SIRIUS_ARCH=linux-x64 \
+             -t sirius:6.3.12 .
+
+docker run --rm sirius:latest --help
 ```
 
 ## Pulling from ghcr.io (recommended)
 
-The CI workflow pushes each build to the GitHub Container Registry as an OCI artifact.
-Pull it directly with Apptainer (no manual download needed):
-
 ```bash
-# Specific version + arch
-apptainer pull sirius.sif oras://ghcr.io/exfab/sirius-container/sirius:6.3.12-linux-x64
+# Docker
+docker pull ghcr.io/exfab/sirius-container/sirius:6.3.12
 
-# Latest release (tag builds only)
-apptainer pull sirius.sif oras://ghcr.io/exfab/sirius-container/sirius:latest
+# Apptainer/Singularity on an HPC node (converts to a .sif on the fly)
+apptainer pull sirius.sif docker://ghcr.io/exfab/sirius-container/sirius:6.3.12
+apptainer run sirius.sif --help
 ```
 
-> **Note:** These are raw `.sif` artifacts stored via the ORAS protocol.
-> They are **not** Docker images and cannot be used with `docker pull`.
-> If this repository is forked, substitute `exfab/sirius-container` with the fork's `owner/repo`.
+Tags published by CI:
+
+| Event            | Tags                                        |
+|------------------|---------------------------------------------|
+| push to `main`   | `:latest`, `:main`                          |
+| tag `v<ver>`     | `:<version>-<arch>`, `:<version>`, `:latest` |
+
+If this repository is forked, substitute `exfab/sirius-container` with the fork's
+`owner/repo` (CI derives the path from `github.repository` automatically).
+
+## Verifying an image
+
+Images are signed with Cosign using GitHub's OIDC identity (no key management).
+
+```bash
+# Verify the signature against the GitHub OIDC issuer
+cosign verify \
+  ghcr.io/exfab/sirius-container/sirius:6.3.12 \
+  --certificate-identity-regexp 'https://github.com/exfab/sirius-container/.github/workflows/build.yml' \
+  --certificate-oidc-issuer 'https://token.actions.githubusercontent.com'
+
+# Verify the SLSA provenance attestation
+cosign verify-attestation --type slsaprovenance1 \
+  ghcr.io/exfab/sirius-container/sirius:6.3.12
+```
 
 ## Automated builds
 
-GitHub Actions builds the `.sif` image on every push to `main`, pull request, and version tag.
-To trigger a release, push a tag following the pattern `v<version>` or `v<version>-<arch>`:
-
-```bash
-git tag v6.3.12          # uses default arch (linux-x64)
-git tag v6.3.12-linux-x64
-git push --tags
-```
-
-The workflow:
-- Pushes the image to `ghcr.io/exfab/sirius-container/sirius` (tagged `:version-arch`, `:version`, `:latest`)
-- Uploads the image and integrity files as GitHub Release assets
-
-## Verifying a downloaded image
-
-### SHA256 checksum
-
-```bash
-sha256sum -c sirius-6.3.12-linux-x64.sif.sha256
-```
-
-### Detached GPG signature (when available)
-
-Import the project's public key, then verify:
-```bash
-gpg --import <public-key.asc>
-gpg --verify sirius-6.3.12-linux-x64.sif.asc sirius-6.3.12-linux-x64.sif
-```
-
-### Embedded Apptainer signature (when available)
-
-```bash
-apptainer verify sirius-6.3.12-linux-x64.sif
-```
-
-## Signing setup (repository maintainers)
-
-To enable GPG signing in CI, add the following repository secrets:
-
-| Secret | Description |
-|---|---|
-| `GPG_PRIVATE_KEY` | ASCII-armored GPG private key (`gpg --export-secret-keys --armor <fingerprint>`) |
-| `GPG_PASSPHRASE` | Passphrase protecting the key |
-
-Both the detached `.asc` signature and the embedded Apptainer signature are produced only when
-these secrets are present; the build succeeds without them.
+GitHub Actions (`build.yml`) builds and pushes the image on every push to `main`,
+every `v*` tag, and on manual `workflow_dispatch`. It then signs the image with
+Cosign and attaches an SLSA provenance attestation. No repository secrets are
+required — signing uses the workflow's OIDC token.
